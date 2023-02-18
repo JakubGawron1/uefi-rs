@@ -2,12 +2,22 @@ use crate::proto::unsafe_protocol;
 use crate::{Char16, Event, Result, Status};
 use core::mem::MaybeUninit;
 
+#[repr(C)]
+pub struct KeyState{
+    key_shift_state: u32,
+    key_toggle_state: u8,
+}
+pub struct KeyData{
+    pub key: Key,
+    pub key_state: KeyState,
+}
+
 /// Interface for text-based input devices.
 #[repr(C)]
 #[unsafe_protocol("387477c1-69c7-11d2-8e39-00a0c969723b")]
 pub struct Input {
     reset: extern "efiapi" fn(this: &mut Input, extended: bool) -> Status,
-    read_key_stroke: extern "efiapi" fn(this: &mut Input, key: *mut RawKey) -> Status,
+    read_key_stroke_ex: extern "efiapi" fn(this: &mut Input, key: *mut RawKey) -> Status,
     wait_for_key: Event,
 }
 
@@ -32,10 +42,10 @@ impl Input {
     /// # Errors
     ///
     /// - `DeviceError` if there was an issue with the input device
-    pub fn read_key(&mut self) -> Result<Option<Key>> {
+    pub fn read_key_ex(&mut self, key_data: KeyData) -> Result<Option<Key>> {
         let mut key = MaybeUninit::<RawKey>::uninit();
 
-        match (self.read_key_stroke)(self, key.as_mut_ptr()) {
+        match (self.read_key_stroke_ex)(self, key.as_mut_ptr()) {
             Status::NOT_READY => Ok(None),
             other => other.into_with_val(|| Some(unsafe { key.assume_init() }.into())),
         }

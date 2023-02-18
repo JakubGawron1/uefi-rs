@@ -1,27 +1,48 @@
+use core::ffi::c_void;
 use crate::proto::unsafe_protocol;
 use crate::{Char16, Event, Result, Status};
-
+use crate::proto::console::text::input::{Key, RawKey};
 use core::mem::MaybeUninit;
+
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct KeyState {
+    pub key_shift_state: u32,
+    pub key_toggle_state: u8,
+}
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct KeyData {
+    pub key: Key,
+    pub key_state: KeyState,
+}
 
 #[repr(C)]
 #[unsafe_protocol("dd9e7534-7762-4698-8c14-f58517a625aa")]
-pub struct Input_ex{
-    reset: extern "efiapi" fn(this: &mut Input_ex, extended: bool ) -> Status,
-    read_key_stroke_ex: extern "efiapi" fn (this: &mut Input_ex, key: *mut RawKey)-> Status,
-    wait_for_key: Event,
-    
+pub struct InputEx {
+    reset: extern "efiapi" fn(this: &mut InputEx, extended: bool ) -> Status,
+    read_key_stroke_ex: extern "efiapi" fn(this: &mut InputEx, key: *mut RawKey) -> Status,
+    wait_for_key_ex: Event,
+    set_state: extern "efiapi" fn(this: &mut InputEx, key_toggle_state: u8) -> Status,
+    register_key_notify: extern "efiapi" fn(this: &mut InputEx, key_data: KeyData, key_notify: &mut KeyData, c_void),
+    unregister_key_notify: extern "efiapi" fn(this: &mut InputEx, c_void),
+
+
+
 }
 
-impl Input_ex{
+impl InputEx {
     pub fn reset(&mut self, extended_verification: bool) -> Result {
         (self.reset)(self, extended_verification).into()
     }
 
-    pub fn read_key(&mut self) -> Result<Option<Key_ex>> {
+    pub fn read_key_ex(&mut self) -> Result<Option<Key>> {
         let mut key = MaybeUninit::<RawKey>::uninit();
 
         match (self.read_key_stroke_ex)(self, key.as_mut_ptr()) {
             Status::NOT_READY => Ok(None),
+
             other => other.into_with_val(|| Some(unsafe { key.assume_init() }.into())),
         }
     }
@@ -29,41 +50,12 @@ impl Input_ex{
     /// Event to be used with `BootServices::wait_for_event()` in order to wait
     /// for a key to be available
     #[must_use]
-    pub const fn wait_for_key_event(&self) -> &Event {
-        &self.wait_for_key
+    pub const fn wait_for_key_event_ex(&self) -> &Event {
+        &self.wait_for_key_ex
     }
+
 }
 
-/// A key read from the console (high-level version)
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum Key_ex {
-    /// The key is associated with a printable Unicode character
-    Printable(Char16),
-
-    /// The key is special (arrow, function, multimedia...)
-    Special(ScanCode_ex),
-}
-
-impl From<RawKey> for Key_ex {
-    fn from(k: RawKey) -> Key_ex {
-        if k.scan_code == ScanCode_ex::NULL {
-            Key_ex::Printable(k.unicode_char)
-        } else {
-            Key_ex::Special(k.scan_code)
-        }
-    }
-}
-
-/// A key read from the console (UEFI version)
-#[repr(C)]
-pub struct RawKey {
-    /// The key's scan code.
-    /// or 0 if printable
-    pub scan_code: ScanCode_ex,
-    /// Associated Unicode character,
-    /// or 0 if not printable.
-    pub unicode_char: Char16,
-}
 
 newtype_enum! {
 /// A keyboard scan code
@@ -71,7 +63,7 @@ newtype_enum! {
 /// Codes 0x8000 -> 0xFFFF are reserved for future OEM extensibility, therefore
 /// this C enum is _not_ safe to model as a Rust enum (where the compiler must
 /// know about all variants at compile time).
-pub enum ScanCode_ex: u16 => #[allow(missing_docs)] {
+pub enum ScanCodeEx: u16 => #[allow(missing_docs)] {
     /// Null scan code, indicates that the Unicode character should be used.
     NULL        = 0x00,
     /// Move cursor up 1 row.
@@ -126,6 +118,8 @@ pub enum ScanCode_ex: u16 => #[allow(missing_docs)] {
     TOGGLE_DISPLAY  = 0x104,
     RECOVERY        = 0x105,
     EJECT           = 0x106,
+
+    DIGIT1          = 0x1E,
 }}
 
 

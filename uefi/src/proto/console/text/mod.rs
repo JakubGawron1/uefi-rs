@@ -1,7 +1,7 @@
 //! Text I/O.
 
 mod input_ex;
-pub use self::input_ex::{Input_ex, Key_ex, ScanCode_ex};
+pub use self::input_ex::{InputEx, ScanCodeEx};
 
 mod input;
 pub use self::input::{Input, Key, ScanCode};
